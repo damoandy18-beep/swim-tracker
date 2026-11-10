@@ -332,6 +332,7 @@ export default function App() {
       <nav className="tab-nav">
         <button className={view === 'progression' ? 'active' : ''} onClick={() => setView('progression')}>Progression</button>
         <button className={view === 'pbs' ? 'active' : ''} onClick={() => setView('pbs')}>Personal Bests</button>
+        <button className={view === 'meet' ? 'active' : ''} onClick={() => setView('meet')}>Meet Recap</button>
       </nav>
 
       {view === 'progression' && (
@@ -384,6 +385,7 @@ export default function App() {
       )}
 
       {view === 'pbs' && <PBsView allPBs={allPBs} />}
+      {view === 'meet' && <MeetRecapView rows={rows} />}
     </div>
   )
 }
@@ -560,6 +562,159 @@ function PBsView({ allPBs }) {
         ))}
       </div>
       <p className="pbs-note">JX = Pho3nix Junior Excellence · Long Course only · 2024-25 season · 10yr girl</p>
+    </div>
+  )
+}
+
+// ── Meet Recap View ───────────────────────────────────────────────────────────
+function MeetRecapView({ rows }) {
+  // Build sorted meet list: most recent first
+  const meets = useMemo(() => {
+    const map = new Map()
+    rows.forEach(r => {
+      if (!r.meet) return
+      const existing = map.get(r.meet)
+      if (!existing || r.isoDate > existing.date) {
+        map.set(r.meet, { name: r.meet, date: r.isoDate, country: r.country })
+      }
+    })
+    return [...map.values()].sort((a, b) => b.date.localeCompare(a.date))
+  }, [rows])
+
+  const [selectedMeet, setSelectedMeet] = useState(() => meets[0]?.name || '')
+
+  // Keep selectedMeet in sync if data loads after render
+  useEffect(() => {
+    if (!selectedMeet && meets.length) setSelectedMeet(meets[0].name)
+  }, [meets, selectedMeet])
+
+  const meetRows = useMemo(() =>
+    rows.filter(r => r.meet === selectedMeet).sort((a, b) => {
+      // Sort by stroke order, then distance
+      const si = STROKE_ORDER.indexOf(a.stroke)
+      const sj = STROKE_ORDER.indexOf(b.stroke)
+      if (si !== sj) return (si === -1 ? 99 : si) - (sj === -1 ? 99 : sj)
+      return parseInt(a.distance) - parseInt(b.distance)
+    }), [rows, selectedMeet])
+
+  // For each swim in this meet, find the PB that existed BEFORE this meet date
+  // (i.e., best time for that event from all results with an earlier date)
+  const priorPBs = useMemo(() => {
+    const meetDate = meets.find(m => m.name === selectedMeet)?.date || ''
+    const map = new Map()
+    rows.forEach(r => {
+      if (r.isoDate >= meetDate) return  // only use swims strictly before this meet
+      const k = eventKey(r)
+      if (!map.has(k) || r.time < map.get(k)) map.set(k, r.time)
+    })
+    return map
+  }, [rows, selectedMeet, meets])
+
+  if (!meets.length) return (
+    <div className="meet-recap-empty card">
+      <div className="chart-prompt-icon">🏆</div>
+      <p>No meet data available yet.</p>
+    </div>
+  )
+
+  // Summary stats
+  const pbsSet = meetRows.filter(r => {
+    const prior = priorPBs.get(eventKey(r))
+    return prior == null || r.time < prior
+  }).length
+
+  const improvements = meetRows
+    .map(r => { const prior = priorPBs.get(eventKey(r)); return prior ? prior - r.time : null })
+    .filter(d => d != null && d > 0)
+
+  const biggestImprovement = improvements.length ? Math.max(...improvements) : null
+
+  const meetInfo = meets.find(m => m.name === selectedMeet)
+
+  return (
+    <div className="meet-recap">
+      {/* Meet selector */}
+      <div className="meet-selector card">
+        <label className="meet-selector-label">Select meet</label>
+        <select
+          className="meet-selector-select"
+          value={selectedMeet}
+          onChange={e => setSelectedMeet(e.target.value)}
+        >
+          {meets.map(m => (
+            <option key={m.name} value={m.name}>
+              {m.name} · {formatDate(m.date)}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Meet header */}
+      <div className="meet-header card">
+        <div className="meet-header-info">
+          <h2 className="meet-name">{selectedMeet}</h2>
+          <p className="meet-meta">{meetInfo ? formatDate(meetInfo.date) : ''}{meetInfo?.country ? ` · ${meetInfo.country}` : ''}</p>
+        </div>
+        <div className="meet-summary-stats">
+          <div className="meet-stat">
+            <div className="meet-stat-val">{meetRows.length}</div>
+            <div className="meet-stat-lbl">Swims</div>
+          </div>
+          <div className={`meet-stat${pbsSet > 0 ? ' pb' : ''}`}>
+            <div className="meet-stat-val">{pbsSet}</div>
+            <div className="meet-stat-lbl">New PBs</div>
+          </div>
+          {biggestImprovement != null && (
+            <div className="meet-stat">
+              <div className="meet-stat-val">−{biggestImprovement.toFixed(2)}s</div>
+              <div className="meet-stat-lbl">Best drop</div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Swim cards */}
+      <div className="meet-swims">
+        {meetRows.map((r, i) => {
+          const prior = priorPBs.get(eventKey(r))
+          const delta = prior != null ? prior - r.time : null  // positive = faster
+          const isNewPB = prior == null || r.time < prior
+          const isFirstEver = prior == null
+          const jx = getJX(r.stroke, r.distance, r.course)
+          const level = jxLevel(r.time, jx)
+          const pct = prior ? Math.abs(delta / prior * 100) : null
+
+          return (
+            <div key={i} className={`meet-swim-card card${isNewPB ? ' meet-swim-pb' : ''}`}>
+              <div className="meet-swim-event">
+                <span className="meet-swim-stroke">{r.stroke}</span>
+                <span className="pbs-tag">{distLabel(r.distance)}</span>
+                <span className={`pbs-tag course-tag-${r.course.toLowerCase()}`}>{courseTag(r.course)}</span>
+                {level && <span className={`jx-badge jx-${level}`}>JX {level[0].toUpperCase() + level.slice(1)}</span>}
+              </div>
+
+              <div className="meet-swim-times">
+                <div className="meet-swim-time">{r.timeStr}</div>
+                <div className="meet-swim-delta">
+                  {isFirstEver ? (
+                    <span className="delta-pb">First ever ★</span>
+                  ) : isNewPB ? (
+                    <span className="delta-pb">↓ {Math.abs(delta).toFixed(2)}s PB {pct ? `(${pct.toFixed(1)}%)` : ''} ★</span>
+                  ) : delta != null ? (
+                    <span className={delta >= 0 ? 'delta-faster' : 'delta-slower'}>
+                      {delta >= 0 ? `↓ ${delta.toFixed(2)}s faster` : `↑ ${Math.abs(delta).toFixed(2)}s slower`}
+                      {pct ? ` (${pct.toFixed(1)}%)` : ''}
+                    </span>
+                  ) : null}
+                </div>
+                {prior != null && (
+                  <div className="meet-swim-pb-label">PB going in: {formatTime(prior)}</div>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
