@@ -44,7 +44,7 @@ body {
 /* ── Header ────────────────────────────────────────────────────────────────── */
 header {
   text-align: center;
-  padding-bottom: 8px;
+  padding-bottom: 4px;
 }
 
 .header-inner {
@@ -70,6 +70,37 @@ header h1 {
   font-size: 0.875rem;
   margin-top: 2px;
   text-align: left;
+}
+
+/* ── Tab navigation ────────────────────────────────────────────────────────── */
+.tab-nav {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  width: fit-content;
+}
+
+.tab-nav button {
+  padding: 8px 20px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.875rem;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.tab-nav button:hover { color: var(--text); }
+
+.tab-nav button.active {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
 }
 
 /* ── Filters ───────────────────────────────────────────────────────────────── */
@@ -148,18 +179,13 @@ header h1 {
   transition: transform 0.15s;
 }
 .metric-card:hover { transform: translateY(-1px); }
-
-.metric-card.pb {
-  border-color: var(--pb-border);
-  background: var(--pb-bg);
-}
+.metric-card.pb { border-color: var(--pb-border); background: var(--pb-bg); }
 
 .metric-val {
   font-size: 1.65rem;
   font-weight: 700;
   letter-spacing: -0.5px;
 }
-
 .metric-card.pb .metric-val { color: var(--pb); }
 
 .metric-lbl {
@@ -172,9 +198,7 @@ header h1 {
 }
 
 /* ── Chart ─────────────────────────────────────────────────────────────────── */
-.chart-card {
-  padding: 20px;
-}
+.chart-card { padding: 20px; }
 
 .chart-wrap {
   height: 400px;
@@ -188,6 +212,26 @@ header h1 {
   margin-top: 12px;
 }
 
+.chart-prompt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 80px 20px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.chart-prompt-icon { font-size: 2.5rem; opacity: 0.4; }
+
+.chart-prompt p {
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.chart-prompt strong { color: var(--text); }
+
 .empty {
   padding: 80px 20px;
   text-align: center;
@@ -197,8 +241,14 @@ header h1 {
 
 /* ── Table ─────────────────────────────────────────────────────────────────── */
 .table-card { overflow: hidden; }
-
 .table-wrap { overflow-x: auto; }
+
+.table-label {
+  font-size: 0.72rem;
+  color: var(--muted);
+  padding: 12px 16px 0;
+  font-style: italic;
+}
 
 table {
   width: 100%;
@@ -237,6 +287,223 @@ tbody tr:hover td { background: var(--surface-2); }
   font-weight: 600;
 }
 
+/* ── Race Review ───────────────────────────────────────────────────────────── */
+.review-btn {
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.8rem;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.review-btn:hover { border-color: var(--accent); color: var(--accent); }
+.review-btn.has-review { border-color: #d97706; color: #d97706; background: rgba(217, 119, 6, 0.08); }
+.review-btn.open { border-color: var(--accent); color: var(--accent); background: rgba(56, 189, 248, 0.08); }
+
+.review-row td { padding: 0 !important; }
+
+.review-panel {
+  background: var(--surface-2);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.review-ratings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.review-phase {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 180px;
+}
+
+.review-phase-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  min-width: 80px;
+}
+
+.review-stars {
+  display: flex;
+  gap: 4px;
+}
+
+.star-btn {
+  width: 28px; height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+  display: flex; align-items: center; justify-content: center;
+}
+.star-btn:hover { border-color: #d97706; color: #d97706; }
+.star-btn.active { background: rgba(217, 119, 6, 0.15); border-color: #d97706; color: #d97706; }
+
+.review-notes {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 0.875rem;
+  padding: 8px 12px;
+  resize: vertical;
+  outline: none;
+  font-family: inherit;
+  transition: border-color 0.15s;
+}
+.review-notes:focus { border-color: var(--accent); }
+.review-notes::placeholder { color: var(--muted); }
+
+.review-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.review-save {
+  padding: 7px 16px;
+  background: var(--accent);
+  color: #0a0f1e;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.review-save:hover { opacity: 0.85; }
+
+.review-cancel {
+  padding: 7px 16px;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.review-cancel:hover { color: var(--text); }
+
+/* ── Personal Bests View ───────────────────────────────────────────────────── */
+.pbs-view {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.pbs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+@media (max-width: 600px) { .pbs-grid { grid-template-columns: 1fr; } }
+
+.pbs-card {
+  padding: 20px;
+}
+
+.pbs-stroke-name {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.pbs-entries {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.pbs-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pbs-time {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  color: var(--text);
+}
+
+.pbs-entry-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-top: 2px;
+}
+
+.pbs-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--surface-2);
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+
+.course-tag-long { background: rgba(56, 189, 248, 0.08); color: var(--accent); border-color: rgba(56, 189, 248, 0.25); }
+.course-tag-short { background: rgba(167, 139, 250, 0.08); color: #a78bfa; border-color: rgba(167, 139, 250, 0.25); }
+
+/* JX badges */
+.jx-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.jx-gold   { background: rgba(234, 179, 8, 0.15);  color: #eab308; border: 1px solid rgba(234, 179, 8, 0.3);  }
+.jx-silver { background: rgba(148, 163, 184, 0.12); color: #cbd5e1; border: 1px solid rgba(148, 163, 184, 0.3); }
+.jx-bronze { background: rgba(180, 83, 9, 0.15);   color: #fb923c; border: 1px solid rgba(180, 83, 9, 0.3);   }
+
+.pbs-entry-meta {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.pbs-note {
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-align: center;
+  font-style: italic;
+  padding-bottom: 8px;
+}
+
 /* ── Splash (loading / error) ──────────────────────────────────────────────── */
 .splash {
   min-height: 100vh;
@@ -264,22 +531,8 @@ tbody tr:hover td { background: var(--surface-2); }
   max-width: 480px;
 }
 
-.err-hint {
-  font-size: 0.85rem;
-  max-width: 420px;
-  line-height: 1.5;
-}
-
-.err-hint code {
-  background: var(--surface-2);
-  border-radius: 4px;
-  padding: 1px 5px;
-  font-size: 0.82rem;
-}
-
 .spinner {
-  width: 36px;
-  height: 36px;
+  width: 36px; height: 36px;
   border: 3px solid var(--border);
   border-top-color: var(--accent);
   border-radius: 50%;

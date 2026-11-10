@@ -1,13 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import {
-  Chart as ChartJS,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-  TimeScale,
+  Chart as ChartJS, LinearScale, PointElement, LineElement,
+  Title, Tooltip, Legend, TimeScale,
 } from 'chart.js'
 import 'chartjs-adapter-date-fns'
 import { Line } from 'react-chartjs-2'
@@ -16,15 +10,36 @@ import './App.css'
 
 ChartJS.register(LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale)
 
-// ── Utilities ─────────────────────────────────────────────────────────────────
+// ── JX Standards — Pho3nix 2024-25, 10yr girl, Long Course ───────────────────
+const JX_LC = {
+  'Freestyle|50':          { gold: 34.31, silver: 35.91, bronze: 38.14 },
+  'Butterfly|50':          { gold: 35.73, silver: 37.62, bronze: 40.02 },
+  'Backstroke|50':         { gold: 38.51, silver: 40.30, bronze: 42.18 },
+  'Breaststroke|50':       { gold: 42.65, silver: 44.70, bronze: 47.51 },
+  'Individual Medley|200': { gold: 178.63, silver: 190.19, bronze: 200.99 },
+  'IM|200':                { gold: 178.63, silver: 190.19, bronze: 200.99 },
+  'Medley|200':            { gold: 178.63, silver: 190.19, bronze: 200.99 },
+}
 
+function getJX(stroke, distance, course) {
+  if (course !== 'Long') return null
+  return JX_LC[`${stroke}|${distance}`] || null
+}
+
+function jxLevel(time, jx) {
+  if (!jx || time == null) return null
+  if (time <= jx.gold)   return 'gold'
+  if (time <= jx.silver) return 'silver'
+  if (time <= jx.bronze) return 'bronze'
+  return null
+}
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
 function parseDate(str) {
   if (!str) return null
   str = String(str).trim()
-  // DD/MM/YYYY or D/M/YYYY (Australian format)
   const au = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
   if (au) return new Date(+au[3], +au[2] - 1, +au[1])
-  // DD-MM-YYYY
   const dash = str.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/)
   if (dash) return new Date(+dash[3], +dash[2] - 1, +dash[1])
   const d = new Date(str)
@@ -34,10 +49,7 @@ function parseDate(str) {
 function toISO(str) {
   const d = parseDate(str)
   if (!d) return str
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
 }
 
 function parseTime(str) {
@@ -45,11 +57,11 @@ function parseTime(str) {
   str = String(str).trim()
   if (str.includes(':')) {
     const [m, s] = str.split(':')
-    const val = parseInt(m, 10) * 60 + parseFloat(s)
-    return isNaN(val) ? null : val
+    const v = parseInt(m, 10) * 60 + parseFloat(s)
+    return isNaN(v) ? null : v
   }
-  const val = parseFloat(str)
-  return isNaN(val) ? null : val
+  const v = parseFloat(str)
+  return isNaN(v) ? null : v
 }
 
 function formatTime(secs) {
@@ -73,27 +85,26 @@ function distLabel(d) {
   return isNaN(n) ? d : `${n}m`
 }
 
-function eventKey(r) {
-  return `${r.stroke}|${r.distance}|${r.course}`
+function courseTag(c) {
+  if (c === 'Long')  return 'LC'
+  if (c === 'Short') return 'SC'
+  return c
 }
 
-function eventLabel(r) {
-  return `${r.stroke} ${distLabel(r.distance)} ${r.course}`
-}
+function eventKey(r) { return `${r.stroke}|${r.distance}|${r.course}` }
 
-const LINE_COLORS = [
-  '#4fc3f7', '#ce93d8', '#80cbc4', '#ffd54f', '#ff8a65',
-  '#a5d6a7', '#ef9a9a', '#90caf9', '#f48fb1', '#ffe082',
-]
+const LINE_COLORS = ['#38bdf8','#a78bfa','#34d399','#fb923c','#f472b6','#facc15','#60a5fa','#4ade80']
 
 // ── Data fetching ─────────────────────────────────────────────────────────────
-
 function shapeRow(cells, headers) {
   const r = {}
   headers.forEach((h, i) => { r[h.trim()] = (cells[i] || '').trim() })
-  const isoDate = toISO(r.Date)
-  const time = parseTime(r.Time)
-  return { isoDate, rawDate: r.Date, meet: r.Meet, stroke: r.Stroke, distance: r.Distance, course: r.Course, country: r.Country, age: r.Age, verified: r.Verified, timeStr: r.Time, time }
+  return {
+    isoDate: toISO(r.Date), rawDate: r.Date,
+    meet: r.Meet, stroke: r.Stroke, distance: r.Distance,
+    course: r.Course, country: r.Country, age: r.Age,
+    verified: r.Verified, timeStr: r.Time, time: parseTime(r.Time),
+  }
 }
 
 async function fetchSheetData() {
@@ -113,45 +124,64 @@ async function fetchSheetData() {
     .sort((a, b) => a.isoDate.localeCompare(b.isoDate))
 }
 
+// ── Race Review storage (localStorage) ───────────────────────────────────────
+const REVIEW_KEY = 'indy-swim-reviews'
+
+function loadReviews() {
+  try { return JSON.parse(localStorage.getItem(REVIEW_KEY) || '{}') } catch { return {} }
+}
+
+function saveReview(key, review) {
+  try {
+    const all = loadReviews()
+    all[key] = review
+    localStorage.setItem(REVIEW_KEY, JSON.stringify(all))
+  } catch {}
+}
+
+function reviewKey(r) { return `${r.isoDate}|${r.stroke}|${r.distance}|${r.course}|${r.timeStr}` }
+
 // ── Main App ──────────────────────────────────────────────────────────────────
+const STROKE_ORDER = ['Freestyle', 'Backstroke', 'Breaststroke', 'Butterfly', 'Individual Medley', 'IM', 'Medley']
 
 export default function App() {
-  const [rows, setRows] = useState([])
+  const [rows,    setRows]    = useState([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const [error,   setError]   = useState(null)
+  const [view,    setView]    = useState('progression')
+  const [reviews, setReviews] = useState(() => loadReviews())
 
-  const [fStroke, setFStroke] = useState('All')
-  const [fDist, setFDist] = useState('All')
-  const [fCourse, setFCourse] = useState('All')
+  const [fStroke,  setFStroke]  = useState('All')
+  const [fDist,    setFDist]    = useState('All')
+  const [fCourse,  setFCourse]  = useState('All')
   const [fCountry, setFCountry] = useState('All')
 
   useEffect(() => {
-    fetchSheetData()
-      .then(setRows)
-      .catch(e => setError(e.message))
-      .finally(() => setLoading(false))
+    fetchSheetData().then(setRows).catch(e => setError(e.message)).finally(() => setLoading(false))
   }, [])
 
   const opts = useMemo(() => {
-    const uniq = (key) => [...new Set(rows.map(r => r[key]).filter(Boolean))]
+    const uniq = key => [...new Set(rows.map(r => r[key]).filter(Boolean))]
     return {
-      strokes: uniq('stroke').sort(),
-      distances: uniq('distance').sort((a, b) => parseInt(a) - parseInt(b)),
-      courses: uniq('course').sort(),
+      strokes:   uniq('stroke').sort(),
+      distances: uniq('distance').sort((a,b) => parseInt(a) - parseInt(b)),
+      courses:   uniq('course').sort(),
       countries: uniq('country').sort(),
     }
   }, [rows])
 
   const filtered = useMemo(() =>
     rows.filter(r =>
-      (fStroke === 'All' || r.stroke === fStroke) &&
-      (fDist === 'All' || r.distance === fDist) &&
-      (fCourse === 'All' || r.course === fCourse) &&
-      (fCountry === 'All' || r.country === fCountry)
+      (fStroke  === 'All' || r.stroke   === fStroke)  &&
+      (fDist    === 'All' || r.distance === fDist)    &&
+      (fCourse  === 'All' || r.course   === fCourse)  &&
+      (fCountry === 'All' || r.country  === fCountry)
     ), [rows, fStroke, fDist, fCourse, fCountry])
 
-  // Group by event for chart
+  const chartReady = fStroke !== 'All' && fDist !== 'All'
+
   const groups = useMemo(() => {
+    if (!chartReady) return new Map()
     const map = new Map()
     filtered.forEach(r => {
       const k = eventKey(r)
@@ -159,140 +189,133 @@ export default function App() {
       map.get(k).push(r)
     })
     return map
-  }, [filtered])
+  }, [filtered, chartReady])
 
-  // Running PB flags per event (in date order)
   const runningPB = useMemo(() => {
     const map = new Map()
     groups.forEach((eventRows, key) => {
       let best = Infinity
-      map.set(key, eventRows.map(r => {
-        const isNew = r.time < best
-        if (isNew) best = r.time
-        return isNew
-      }))
+      map.set(key, eventRows.map(r => { const isNew = r.time < best; if (isNew) best = r.time; return isNew }))
     })
     return map
   }, [groups])
 
-  // Current all-time PB per event (for table highlighting)
-  const currentPB = useMemo(() => {
+  const currentPBMap = useMemo(() => {
     const map = new Map()
-    groups.forEach((eventRows, key) => {
-      map.set(key, Math.min(...eventRows.map(r => r.time)))
-    })
+    groups.forEach((eventRows, key) => { map.set(key, Math.min(...eventRows.map(r => r.time))) })
     return map
   }, [groups])
 
-  // Chart datasets
+  const allPBs = useMemo(() => {
+    const map = new Map()
+    rows.forEach(r => {
+      const k = eventKey(r)
+      if (!map.has(k) || r.time < map.get(k).time) map.set(k, r)
+    })
+    return map
+  }, [rows])
+
+  // JX dashed reference lines for the chart
+  const jxDatasets = useMemo(() => {
+    if (!chartReady || fCourse === 'All') return []
+    const jx = getJX(fStroke, fDist, fCourse)
+    if (!jx) return []
+    const dates = filtered.map(r => r.isoDate).sort()
+    if (!dates.length) return []
+    const start = dates[0]; const end = dates[dates.length - 1]
+    return [
+      { y: jx.gold,   label: `JX Gold ${formatTime(jx.gold)}`,   color: '#d97706' },
+      { y: jx.silver, label: `JX Silver ${formatTime(jx.silver)}`, color: '#94a3b8' },
+      { y: jx.bronze, label: `JX Bronze ${formatTime(jx.bronze)}`, color: '#b45309' },
+    ].map(({ y, label, color }) => ({
+      label, borderColor: color, backgroundColor: 'transparent',
+      data: [{ x: start, y }, { x: end, y }],
+      borderWidth: 1.5, borderDash: [6, 4],
+      pointRadius: 0, pointHoverRadius: 0, tension: 0,
+    }))
+  }, [chartReady, fStroke, fDist, fCourse, filtered])
+
   const chartData = useMemo(() => {
     const entries = [...groups.entries()]
-    return {
-      datasets: entries.map(([key, eventRows], idx) => {
-        const pbFlags = runningPB.get(key)
-        const color = LINE_COLORS[idx % LINE_COLORS.length]
-        return {
-          label: eventLabel(eventRows[0]),
-          data: eventRows.map((r, i) => ({
-            x: r.isoDate,
-            y: r.time,
-            meet: r.meet,
-            timeStr: r.timeStr,
-            isPB: pbFlags[i],
-          })),
-          borderColor: color,
-          backgroundColor: color,
-          pointBackgroundColor: eventRows.map((_, i) => pbFlags[i] ? '#22c55e' : color),
-          pointBorderColor: eventRows.map((_, i) => pbFlags[i] ? '#166534' : color),
-          pointRadius: eventRows.map((_, i) => pbFlags[i] ? 7 : 4),
-          pointHoverRadius: 9,
-          tension: 0.25,
-          fill: false,
-        }
-      })
-    }
-  }, [groups, runningPB])
+    const swimDatasets = entries.map(([, eventRows], idx) => {
+      const pbFlags = runningPB.get(eventKey(eventRows[0]))
+      const color = LINE_COLORS[idx % LINE_COLORS.length]
+      return {
+        label: `${eventRows[0].stroke} ${distLabel(eventRows[0].distance)} ${courseTag(eventRows[0].course)}`,
+        data: eventRows.map((r, i) => ({ x: r.isoDate, y: r.time, meet: r.meet, timeStr: r.timeStr, isPB: pbFlags[i] })),
+        borderColor: color, backgroundColor: 'transparent',
+        borderWidth: 2.5,
+        pointBackgroundColor: eventRows.map((_, i) => pbFlags[i] ? '#22c55e' : color),
+        pointBorderColor:     eventRows.map((_, i) => pbFlags[i] ? '#166534' : color),
+        pointRadius:          eventRows.map((_, i) => pbFlags[i] ? 7 : 4.5),
+        pointHoverRadius: 9, tension: 0.4, fill: false,
+      }
+    })
+    return { datasets: [...swimDatasets, ...jxDatasets] }
+  }, [groups, runningPB, jxDatasets])
 
   const chartOptions = useMemo(() => ({
-    responsive: true,
-    maintainAspectRatio: false,
+    responsive: true, maintainAspectRatio: false,
     animation: { duration: 300 },
     scales: {
       x: {
         type: 'time',
-        time: { unit: 'month', displayFormats: { month: 'MMM yy', year: 'yyyy' } },
-        grid: { color: 'rgba(255,255,255,0.06)' },
-        ticks: { color: '#64748b', maxTicksLimit: 10 },
+        time: { unit: 'month', displayFormats: { month: 'MMM yy' } },
+        grid: { color: 'rgba(255,255,255,0.04)' },
+        ticks: { color: '#475569', maxTicksLimit: 8 },
+        border: { color: 'rgba(255,255,255,0.08)' },
       },
       y: {
-        reverse: true,
-        grid: { color: 'rgba(255,255,255,0.06)' },
-        ticks: {
-          color: '#64748b',
-          callback: v => formatTime(v),
-        },
-        title: { display: true, text: '← Faster', color: '#475569', font: { size: 11 } },
+        reverse: false,
+        grid: { color: 'rgba(255,255,255,0.04)' },
+        ticks: { color: '#475569', callback: v => formatTime(v) },
+        border: { color: 'rgba(255,255,255,0.08)' },
       },
     },
     plugins: {
-      legend: {
-        position: 'top',
-        labels: { color: '#cbd5e1', boxWidth: 10, padding: 16, font: { size: 12 } },
-      },
+      legend: { position: 'top', labels: { color: '#64748b', boxWidth: 10, padding: 14, font: { size: 11 } } },
       tooltip: {
+        filter: item => !!item.raw?.timeStr,
         callbacks: {
           title: items => formatDate(items[0].raw.x),
           label: item => {
             const { timeStr, isPB, meet } = item.raw
-            const pb = isPB ? ' ★ PB' : ''
-            return ` ${item.dataset.label}: ${timeStr}${pb}${meet ? `  ·  ${meet}` : ''}`
+            return ` ${item.dataset.label}: ${timeStr}${isPB ? ' ★ PB' : ''}${meet ? `  ·  ${meet}` : ''}`
           },
         },
-        backgroundColor: '#1e293b',
-        titleColor: '#f1f5f9',
-        bodyColor: '#cbd5e1',
-        borderColor: '#334155',
-        borderWidth: 1,
-        padding: 10,
+        backgroundColor: '#1e293b', titleColor: '#f1f5f9',
+        bodyColor: '#cbd5e1', borderColor: '#334155', borderWidth: 1, padding: 10,
       },
     },
   }), [])
 
-  // Summary metrics
   const metrics = useMemo(() => {
-    if (!filtered.length) return null
+    if (!filtered.length || !chartReady) return null
     const times = filtered.map(r => r.time)
-    const pb = Math.min(...times)
-    const worst = Math.max(...times)
-    const improvement = worst > pb ? ((worst - pb) / worst * 100).toFixed(1) : '0.0'
-    const meets = new Set(filtered.map(r => r.meet).filter(Boolean)).size
-    return { count: filtered.length, pb: formatTime(pb), improvement: `${improvement}%`, meets }
-  }, [filtered])
+    const pb = Math.min(...times); const worst = Math.max(...times)
+    return {
+      count: filtered.length,
+      pb: formatTime(pb),
+      improvement: worst > pb ? `${((worst - pb) / worst * 100).toFixed(1)}%` : '—',
+      meets: new Set(filtered.map(r => r.meet).filter(Boolean)).size,
+    }
+  }, [filtered, chartReady])
 
-  const resetFilters = useCallback(() => {
-    setFStroke('All'); setFDist('All'); setFCourse('All'); setFCountry('All')
+  const handleSaveReview = useCallback((key, review) => {
+    saveReview(key, review)
+    setReviews(loadReviews())
   }, [])
 
-  // ── Render ──────────────────────────────────────────────────────────────────
+  const clearFilters = () => { setFStroke('All'); setFDist('All'); setFCourse('All'); setFCountry('All') }
+  const hasFilters = fStroke !== 'All' || fDist !== 'All' || fCourse !== 'All' || fCountry !== 'All'
 
-  if (loading) return (
-    <div className="splash">
-      <div className="spinner" />
-      <p>Loading swim data…</p>
-    </div>
-  )
-
+  if (loading) return <div className="splash"><div className="spinner"/><p>Loading swim data…</p></div>
   if (error) return (
     <div className="splash error">
       <h2>Could not load data</h2>
       <p className="err-msg">{error}</p>
-      {API_KEY === 'YOUR_API_KEY_HERE' && (
-        <p className="err-hint">Open <code>src/config.js</code> and add your Google Sheets API key. See README for instructions.</p>
-      )}
     </div>
   )
-
-  const hasData = chartData.datasets.length > 0
 
   return (
     <div className="app">
@@ -306,63 +329,79 @@ export default function App() {
         </div>
       </header>
 
-      <section className="filters card">
-        <FilterSelect label="Stroke"   value={fStroke}  onChange={setFStroke}  options={opts.strokes} />
-        <FilterSelect label="Distance" value={fDist}    onChange={setFDist}    options={opts.distances} distMode />
-        <FilterSelect label="Course"   value={fCourse}  onChange={setFCourse}  options={opts.courses} />
-        <FilterSelect label="Country"  value={fCountry} onChange={setFCountry} options={opts.countries} />
-        {(fStroke !== 'All' || fDist !== 'All' || fCourse !== 'All' || fCountry !== 'All') && (
-          <button className="reset-btn" onClick={resetFilters}>Clear</button>
-        )}
-      </section>
+      <nav className="tab-nav">
+        <button className={view === 'progression' ? 'active' : ''} onClick={() => setView('progression')}>Progression</button>
+        <button className={view === 'pbs' ? 'active' : ''} onClick={() => setView('pbs')}>Personal Bests</button>
+      </nav>
 
-      {metrics && (
-        <section className="metrics">
-          <MetricCard label="Results"         value={metrics.count} />
-          <MetricCard label="Personal Best"   value={metrics.pb}    highlight />
-          <MetricCard label="Best Improvement" value={metrics.improvement} />
-          <MetricCard label="Meets"           value={metrics.meets} />
-        </section>
+      {view === 'progression' && (
+        <>
+          <section className="filters card">
+            <FilterSelect label="Stroke"   value={fStroke}  onChange={setFStroke}  options={opts.strokes} />
+            <FilterSelect label="Distance" value={fDist}    onChange={setFDist}    options={opts.distances} distMode />
+            <FilterSelect label="Course"   value={fCourse}  onChange={setFCourse}  options={opts.courses} />
+            <FilterSelect label="Country"  value={fCountry} onChange={setFCountry} options={opts.countries} />
+            {hasFilters && <button className="reset-btn" onClick={clearFilters}>Clear</button>}
+          </section>
+
+          {metrics && (
+            <section className="metrics">
+              <MetricCard label="Results"          value={metrics.count} />
+              <MetricCard label="Personal Best"    value={metrics.pb} highlight />
+              <MetricCard label="Best Improvement" value={metrics.improvement} />
+              <MetricCard label="Meets"            value={metrics.meets} />
+            </section>
+          )}
+
+          <section className="chart-card card">
+            {!chartReady ? (
+              <div className="chart-prompt">
+                <div className="chart-prompt-icon">📈</div>
+                <p>Select a <strong>Stroke</strong> and <strong>Distance</strong> to view progression</p>
+              </div>
+            ) : chartData.datasets.some(d => d.data.some(p => p.timeStr)) ? (
+              <>
+                <div className="chart-wrap">
+                  <Line data={chartData} options={chartOptions} />
+                </div>
+                <p className="chart-note">Green dots = new PB at time of swim · Lower = faster</p>
+              </>
+            ) : (
+              <div className="empty">No results match the current filters.</div>
+            )}
+          </section>
+
+          <section className="table-card card">
+            <ResultsTable
+              rows={chartReady ? filtered : [...rows].sort((a,b) => b.isoDate.localeCompare(a.isoDate)).slice(0, 20)}
+              currentPBMap={currentPBMap}
+              reviews={reviews}
+              onSaveReview={handleSaveReview}
+              showRecentLabel={!chartReady}
+            />
+          </section>
+        </>
       )}
 
-      <section className="chart-card card">
-        {hasData ? (
-          <div className="chart-wrap">
-            <Line data={chartData} options={chartOptions} />
-          </div>
-        ) : (
-          <div className="empty">No results match the current filters.</div>
-        )}
-        {hasData && (
-          <p className="chart-note">Green dots = new personal best at the time · Y-axis reversed: higher = faster</p>
-        )}
-      </section>
-
-      {filtered.length > 0 && (
-        <section className="table-card card">
-          <ResultsTable rows={filtered} currentPB={currentPB} />
-        </section>
-      )}
+      {view === 'pbs' && <PBsView allPBs={allPBs} />}
     </div>
   )
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
-
+// ── Filter Select ─────────────────────────────────────────────────────────────
 function FilterSelect({ label, value, onChange, options, distMode }) {
   return (
     <div className="filter">
       <label>{label}</label>
       <select value={value} onChange={e => onChange(e.target.value)}>
         <option value="All">All</option>
-        {options.map(o => (
-          <option key={o} value={o}>{distMode ? distLabel(o) : o}</option>
-        ))}
+        {options.map(o => <option key={o} value={o}>{distMode ? distLabel(o) : o}</option>)}
       </select>
     </div>
   )
 }
 
+// ── Metric Card ───────────────────────────────────────────────────────────────
 function MetricCard({ label, value, highlight }) {
   return (
     <div className={`metric-card${highlight ? ' pb' : ''}`}>
@@ -372,43 +411,155 @@ function MetricCard({ label, value, highlight }) {
   )
 }
 
-function ResultsTable({ rows, currentPB }) {
-  const sorted = useMemo(() => [...rows].sort((a, b) => b.isoDate.localeCompare(a.isoDate)), [rows])
+// ── Results Table + Race Review ───────────────────────────────────────────────
+const REVIEW_PHASES = ['Dive', 'Underwater', 'Stroke', 'Finish']
+
+function ResultsTable({ rows, currentPBMap, reviews, onSaveReview, showRecentLabel }) {
+  const [expandedKey, setExpandedKey] = useState(null)
+  const [draft, setDraft] = useState({})
+
+  const sorted = useMemo(() => [...rows].sort((a,b) => b.isoDate.localeCompare(a.isoDate)), [rows])
+
+  function openReview(r) {
+    const k = reviewKey(r)
+    if (expandedKey === k) { setExpandedKey(null); return }
+    setDraft(reviews[k] || { dive: 0, underwater: 0, stroke: 0, finish: 0, notes: '' })
+    setExpandedKey(k)
+  }
+
+  function handleSave(r) {
+    onSaveReview(reviewKey(r), draft)
+    setExpandedKey(null)
+  }
 
   return (
     <div className="table-wrap">
+      {showRecentLabel && <p className="table-label">20 most recent results</p>}
       <table>
         <thead>
           <tr>
-            <th>Date</th>
-            <th>Meet</th>
-            <th>Stroke</th>
-            <th>Dist</th>
-            <th>Course</th>
-            <th>Country</th>
-            <th>Age</th>
-            <th>Time</th>
+            <th>Date</th><th>Meet</th><th>Stroke</th><th>Dist</th>
+            <th>Course</th><th>Country</th><th>Age</th><th>Time</th><th></th>
           </tr>
         </thead>
         <tbody>
           {sorted.map((r, i) => {
-            const key = eventKey(r)
-            const isPB = currentPB.get(key) === r.time
+            const isPB = currentPBMap.get(eventKey(r)) === r.time
+            const rk = reviewKey(r)
+            const hasReview = !!reviews[rk]
+            const isOpen = expandedKey === rk
             return (
-              <tr key={i} className={isPB ? 'pb-row' : ''}>
-                <td>{formatDate(r.isoDate)}</td>
-                <td>{r.meet}</td>
-                <td>{r.stroke}</td>
-                <td>{distLabel(r.distance)}</td>
-                <td>{r.course}</td>
-                <td>{r.country}</td>
-                <td>{r.age}</td>
-                <td className={isPB ? 'pb-time' : ''}>{r.timeStr}{isPB ? ' ★' : ''}</td>
-              </tr>
+              <>
+                <tr key={i} className={isPB ? 'pb-row' : ''}>
+                  <td>{formatDate(r.isoDate)}</td>
+                  <td>{r.meet}</td>
+                  <td>{r.stroke}</td>
+                  <td>{distLabel(r.distance)}</td>
+                  <td>{courseTag(r.course)}</td>
+                  <td>{r.country}</td>
+                  <td>{r.age}</td>
+                  <td className={isPB ? 'pb-time' : ''}>{r.timeStr}{isPB ? ' ★' : ''}</td>
+                  <td>
+                    <button
+                      className={`review-btn${hasReview ? ' has-review' : ''}${isOpen ? ' open' : ''}`}
+                      onClick={() => openReview(r)}
+                      title={hasReview ? 'View/edit review' : 'Add race review'}
+                    >
+                      {hasReview ? '★' : '+'}
+                    </button>
+                  </td>
+                </tr>
+                {isOpen && (
+                  <tr key={rk + '-review'} className="review-row">
+                    <td colSpan={9}>
+                      <div className="review-panel">
+                        <div className="review-ratings">
+                          {REVIEW_PHASES.map(phase => {
+                            const field = phase.toLowerCase()
+                            return (
+                              <div key={phase} className="review-phase">
+                                <span className="review-phase-label">{phase}</span>
+                                <div className="review-stars">
+                                  {[1,2,3,4,5].map(n => (
+                                    <button
+                                      key={n}
+                                      className={`star-btn${draft[field] >= n ? ' active' : ''}`}
+                                      onClick={() => setDraft(d => ({ ...d, [field]: d[field] === n ? 0 : n }))}
+                                    >{n}</button>
+                                  ))}
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                        <textarea
+                          className="review-notes"
+                          placeholder="Anything worth remembering? (optional)"
+                          value={draft.notes || ''}
+                          onChange={e => setDraft(d => ({ ...d, notes: e.target.value }))}
+                          rows={2}
+                        />
+                        <div className="review-actions">
+                          <button className="review-save" onClick={() => handleSave(r)}>Save review</button>
+                          <button className="review-cancel" onClick={() => setExpandedKey(null)}>Cancel</button>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </>
             )
           })}
         </tbody>
       </table>
+    </div>
+  )
+}
+
+// ── Personal Bests View ───────────────────────────────────────────────────────
+function PBsView({ allPBs }) {
+  const byStroke = useMemo(() => {
+    const map = {}
+    allPBs.forEach(r => {
+      if (!map[r.stroke]) map[r.stroke] = []
+      map[r.stroke].push(r)
+    })
+    Object.values(map).forEach(arr => arr.sort((a,b) => parseInt(a.distance) - parseInt(b.distance)))
+    return map
+  }, [allPBs])
+
+  const ordered = [
+    ...STROKE_ORDER.filter(s => byStroke[s]),
+    ...Object.keys(byStroke).filter(s => !STROKE_ORDER.includes(s)).sort(),
+  ]
+
+  return (
+    <div className="pbs-view">
+      <div className="pbs-grid">
+        {ordered.map(stroke => (
+          <div key={stroke} className="pbs-card card">
+            <h3 className="pbs-stroke-name">{stroke}</h3>
+            <div className="pbs-entries">
+              {byStroke[stroke].map((r, i) => {
+                const jx = getJX(r.stroke, r.distance, r.course)
+                const level = jxLevel(r.time, jx)
+                return (
+                  <div key={i} className="pbs-entry">
+                    <div className="pbs-time">{r.timeStr}</div>
+                    <div className="pbs-entry-tags">
+                      <span className="pbs-tag">{distLabel(r.distance)}</span>
+                      <span className={`pbs-tag course-tag-${r.course.toLowerCase()}`}>{courseTag(r.course)}</span>
+                      {level && <span className={`jx-badge jx-${level}`}>JX {level[0].toUpperCase() + level.slice(1)}</span>}
+                    </div>
+                    <div className="pbs-entry-meta">{formatDate(r.isoDate)} · {r.meet}</div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+      <p className="pbs-note">JX = Pho3nix Junior Excellence · Long Course only · 2024-25 season · 10yr girl</p>
     </div>
   )
 }
