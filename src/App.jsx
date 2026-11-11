@@ -93,7 +93,10 @@ function courseTag(c) {
 
 function eventKey(r) { return `${r.stroke}|${r.distance}|${r.course}` }
 
-const LINE_COLORS = ['#38bdf8','#a78bfa','#34d399','#fb923c','#f472b6','#facc15','#60a5fa','#4ade80']
+const LINE_COLORS = {
+  dark:  ['#00c9a7','#a78bfa','#4ade80','#fb923c','#f472b6','#facc15','#60a5fa','#38bdf8'],
+  light: ['#2a7d78','#6d4fb0','#3a8a58','#b55e18','#9e3f74','#9a7010','#2c5fa0','#2a7d78'],
+}
 
 // ── Data fetching ─────────────────────────────────────────────────────────────
 function shapeRow(cells, headers) {
@@ -150,6 +153,9 @@ export default function App() {
   const [error,   setError]   = useState(null)
   const [view,    setView]    = useState('progression')
   const [reviews, setReviews] = useState(() => loadReviews())
+  const [theme,   setTheme]   = useState(() => {
+    try { return localStorage.getItem('indy-theme') || 'dark' } catch { return 'dark' }
+  })
 
   const [fStroke,  setFStroke]  = useState('All')
   const [fDist,    setFDist]    = useState('All')
@@ -159,6 +165,13 @@ export default function App() {
   useEffect(() => {
     fetchSheetData().then(setRows).catch(e => setError(e.message)).finally(() => setLoading(false))
   }, [])
+
+  useEffect(() => {
+    document.body.setAttribute('data-theme', theme)
+    try { localStorage.setItem('indy-theme', theme) } catch {}
+  }, [theme])
+
+  const toggleTheme = () => setTheme(t => t === 'dark' ? 'light' : 'dark')
 
   const opts = useMemo(() => {
     const uniq = key => [...new Set(rows.map(r => r[key]).filter(Boolean))]
@@ -237,9 +250,10 @@ export default function App() {
 
   const chartData = useMemo(() => {
     const entries = [...groups.entries()]
+    const colors = LINE_COLORS[theme] || LINE_COLORS.dark
     const swimDatasets = entries.map(([, eventRows], idx) => {
       const pbFlags = runningPB.get(eventKey(eventRows[0]))
-      const color = LINE_COLORS[idx % LINE_COLORS.length]
+      const color = colors[idx % colors.length]
       return {
         label: `${eventRows[0].stroke} ${distLabel(eventRows[0].distance)} ${courseTag(eventRows[0].course)}`,
         data: eventRows.map((r, i) => ({ x: r.isoDate, y: r.time, meet: r.meet, timeStr: r.timeStr, isPB: pbFlags[i] })),
@@ -252,42 +266,48 @@ export default function App() {
       }
     })
     return { datasets: [...swimDatasets, ...jxDatasets] }
-  }, [groups, runningPB, jxDatasets])
+  }, [groups, runningPB, jxDatasets, theme])
 
-  const chartOptions = useMemo(() => ({
-    responsive: true, maintainAspectRatio: false,
-    animation: { duration: 300 },
-    scales: {
-      x: {
-        type: 'time',
-        time: { unit: 'month', displayFormats: { month: 'MMM yy' } },
-        grid: { color: 'rgba(255,255,255,0.04)' },
-        ticks: { color: '#475569', maxTicksLimit: 8 },
-        border: { color: 'rgba(255,255,255,0.08)' },
-      },
-      y: {
-        reverse: false,
-        grid: { color: 'rgba(255,255,255,0.04)' },
-        ticks: { color: '#475569', callback: v => formatTime(v) },
-        border: { color: 'rgba(255,255,255,0.08)' },
-      },
-    },
-    plugins: {
-      legend: { position: 'top', labels: { color: '#64748b', boxWidth: 10, padding: 14, font: { size: 11 } } },
-      tooltip: {
-        filter: item => !!item.raw?.timeStr,
-        callbacks: {
-          title: items => formatDate(items[0].raw.x),
-          label: item => {
-            const { timeStr, isPB, meet } = item.raw
-            return ` ${item.dataset.label}: ${timeStr}${isPB ? ' ★ PB' : ''}${meet ? `  ·  ${meet}` : ''}`
-          },
+  const chartOptions = useMemo(() => {
+    const dark = theme === 'dark'
+    return {
+      responsive: true, maintainAspectRatio: false,
+      animation: { duration: 300 },
+      scales: {
+        x: {
+          type: 'time',
+          time: { unit: 'month', displayFormats: { month: 'MMM yy' } },
+          grid: { color: dark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.05)' },
+          ticks: { color: dark ? '#4a5568' : '#7a9090', maxTicksLimit: 8 },
+          border: { color: dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' },
         },
-        backgroundColor: '#1e293b', titleColor: '#f1f5f9',
-        bodyColor: '#cbd5e1', borderColor: '#334155', borderWidth: 1, padding: 10,
+        y: {
+          reverse: false,
+          grid: { color: dark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.05)' },
+          ticks: { color: dark ? '#4a5568' : '#7a9090', callback: v => formatTime(v) },
+          border: { color: dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' },
+        },
       },
-    },
-  }), [])
+      plugins: {
+        legend: { position: 'top', labels: { color: dark ? '#64748b' : '#7a9090', boxWidth: 10, padding: 14, font: { size: 11 } } },
+        tooltip: {
+          filter: item => !!item.raw?.timeStr,
+          callbacks: {
+            title: items => formatDate(items[0].raw.x),
+            label: item => {
+              const { timeStr, isPB, meet } = item.raw
+              return ` ${item.dataset.label}: ${timeStr}${isPB ? ' ★ PB' : ''}${meet ? `  ·  ${meet}` : ''}`
+            },
+          },
+          backgroundColor: dark ? '#1a1a1a' : '#ffffff',
+          titleColor: dark ? '#f0f0f0' : '#1a2626',
+          bodyColor: dark ? '#a0aec0' : '#4a6060',
+          borderColor: dark ? '#2e2e2e' : '#dde6e5',
+          borderWidth: 1, padding: 10,
+        },
+      },
+    }
+  }, [theme])
 
   const metrics = useMemo(() => {
     if (!filtered.length || !chartReady) return null
@@ -321,11 +341,20 @@ export default function App() {
     <div className="app">
       <header>
         <div className="header-inner">
-          <span className="header-icon">🏊</span>
-          <div>
-            <h1>Indy's Swim Tracker</h1>
-            <p className="subtitle">Indigo Riordan — Time Progression</p>
+          <div className="header-left">
+            <span className="header-icon">🏊</span>
+            <div>
+              <h1>Indy's Swim Tracker</h1>
+              <p className="subtitle">Indigo Riordan — Time Progression</p>
+            </div>
           </div>
+          <button className="theme-toggle" onClick={toggleTheme} title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}>
+            {theme === 'dark' ? (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+            ) : (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+            )}
+          </button>
         </div>
       </header>
 
